@@ -38,7 +38,7 @@ print("Unlabeled Data Shape:", unlabeled_df.shape)
 
 from sklearn.model_selection import train_test_split
 
-label_column = "Label"  # Change if your label column has a different name
+label_column = "Label"
 
 # Drop labels from the Unlabeled Dataset
 unlabeled_df_no_label = unlabeled_df.drop(columns=[label_column])
@@ -50,3 +50,51 @@ unlabeled_train_df, unlabeled_test_df = train_test_split(unlabeled_df_no_label, 
 print("Unlabeled Training Data Shape (without labels):", unlabeled_train_df.shape)
 print("Unlabeled Testing Data Shape (without labels):", unlabeled_test_df.shape)
 
+# Save datasets
+labeled_df.to_csv("labeled_data.csv", index=False)
+print("Labeled dataset saved as 'labeled_data.csv'")
+
+unlabeled_train_df.to_csv("unlabeled_train_data.csv", index=False)
+print("Unlabeled train dataset saved as 'unlabeled_train_data.csv'")
+
+unlabeled_test_df.to_csv("unlabeled_test_data.csv", index=False)
+print("Unlabeled test dataset saved as 'unlabeled_test_data.csv'")
+
+import pandas as pd
+from sklearn.model_selection import train_test_split
+
+# Load the labeled dataset
+labeled_df = pd.read_csv("labeled_data.csv")
+
+# Define features (X) and labels (y)
+label_column = "Label"
+X = labeled_df.drop(columns=[label_column])  # Features
+y = labeled_df[label_column]  # Labels
+
+# Split into 80% Training and 20% Validation
+X_train, X_val, y_train, y_val = train_test_split(X, y, test_size=0.20, random_state=42)
+
+# Display dataset shapes
+print("Training Data Shape:", X_train.shape)
+print("Validation Data Shape:", X_val.shape)
+
+from sklearn.ensemble import RandomForestClassifier, BaggingClassifier, AdaBoostClassifier
+from sklearn.tree import DecisionTreeClassifier
+from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score
+
+# Define models
+models = {
+    "XGBoost": XGBClassifier(eval_metric='logloss'),
+    "Random Forest": RandomForestClassifier(n_estimators=100, random_state=42),
+    "Decision Tree": DecisionTreeClassifier(random_state=42),
+    "Bagging" : BaggingClassifier(estimator=DecisionTreeClassifier(), n_estimators=50, random_state=42),
+    "AdaBoost": AdaBoostClassifier(n_estimators=50, random_state=42)
+}
+
+# Train each model and evaluate performance
+for name, model in models.items():
+    model.fit(X_train, y_train)  # Train the model
+    y_pred = model.predict(X_val)  # Predict on validation set
+    acc = accuracy_score(y_val, y_pred)  # Calculate accuracy
+    print(f"{name} Accuracy: {acc:.4f}")

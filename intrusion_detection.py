@@ -36,19 +36,44 @@ unlabeled_df = df.drop(labeled_df.index)
 print("Labeled Data Shape:", labeled_df.shape)
 print("Unlabeled Data Shape:", unlabeled_df.shape)
 
+# from sklearn.model_selection import train_test_split
+
+# label_column = "Label"
+
+# # Drop labels from the Unlabeled Dataset
+# unlabeled_df_no_label = unlabeled_df.drop(columns=[label_column])
+
+# # Further split Unlabeled Data (Train 90% / Test 10%)
+# unlabeled_train_df, unlabeled_test_df = train_test_split(unlabeled_df_no_label, test_size=0.10, random_state=42)
+
+# # Display updated split sizes
+# print("Unlabeled Training Data Shape (without labels):", unlabeled_train_df.shape)
+# print("Unlabeled Testing Data Shape (without labels):", unlabeled_test_df.shape)
+
+
 from sklearn.model_selection import train_test_split
 
 label_column = "Label"
+
+# Save the labels before dropping them
+original_labels_unlabeled = unlabeled_df[label_column]  # Store true labels separately
 
 # Drop labels from the Unlabeled Dataset
 unlabeled_df_no_label = unlabeled_df.drop(columns=[label_column])
 
 # Further split Unlabeled Data (Train 90% / Test 10%)
-unlabeled_train_df, unlabeled_test_df = train_test_split(unlabeled_df_no_label, test_size=0.10, random_state=42)
+unlabeled_train_df, unlabeled_test_df, train_labels, test_labels = train_test_split(
+    unlabeled_df_no_label, original_labels_unlabeled, test_size=0.10, random_state=42
+)
 
 # Display updated split sizes
 print("Unlabeled Training Data Shape (without labels):", unlabeled_train_df.shape)
 print("Unlabeled Testing Data Shape (without labels):", unlabeled_test_df.shape)
+
+# Save the true labels for comparison
+train_labels.to_csv("unlabeled_train_true_labels.csv", index=False)
+test_labels.to_csv("unlabeled_test_true_labels.csv", index=False)
+print("True labels saved for comparison later.")
 
 # Save datasets
 labeled_df.to_csv("labeled_data.csv", index=False)
@@ -98,3 +123,84 @@ for name, model in models.items():
     y_pred = model.predict(X_val)  # Predict on validation set
     acc = accuracy_score(y_val, y_pred)  # Calculate accuracy
     print(f"{name} Accuracy: {acc:.4f}")
+
+import pandas as pd
+
+# Load the unlabeled training dataset
+unlabeled_train_df = pd.read_csv("unlabeled_train_data.csv")
+
+# Store pseudo-labeled datasets
+for name, model in models.items():
+    # Generate pseudo labels
+    pseudo_labels = model.predict(unlabeled_train_df)
+
+    # Create a new DataFrame with pseudo labels
+    pseudo_labeled_df = unlabeled_train_df.copy()
+    pseudo_labeled_df["pseudo_label"] = pseudo_labels
+
+    # Save to CSV
+    file_name = f"pseudo_labeled_{name.lower().replace(' ', '_')}.csv"
+    pseudo_labeled_df.to_csv(file_name, index=False)
+    print(f"Pseudo Labels generated using {name} and saved to '{file_name}'")
+
+import numpy as np
+from scipy.stats import mode
+
+# Collect all pseudo-label predictions
+predictions = []
+
+for name, model in models.items():
+    preds = model.predict(unlabeled_train_df)
+    predictions.append(preds)
+
+# Convert predictions list to a NumPy array
+predictions = np.array(predictions)
+
+# Apply Majority Voting (mode function selects the most common label)
+final_pseudo_labels, _ = mode(predictions, axis=0)
+
+# Create a new DataFrame with final pseudo labels
+pseudo_labeled_mv_df = unlabeled_train_df.copy()
+pseudo_labeled_mv_df["pseudo_label"] = final_pseudo_labels.flatten()  # Add pseudo labels
+
+# Save the majority-voted pseudo-labeled dataset
+pseudo_labeled_mv_df.to_csv("pseudo_labeled_majority_voting.csv", index=False)
+print("Pseudo Labels generated using Majority Voting and saved to 'pseudo_labeled_majority_voting.csv'")
+
+import pandas as pd
+from sklearn.metrics import accuracy_score
+
+# Load the true labels (ground truth) for the Unlabeled Training Data
+true_labels = pd.read_csv("unlabeled_train_true_labels.csv")
+
+# Define model-generated pseudo label file names
+pseudo_label_files = {
+    "XGBoost": "pseudo_labeled_xgboost.csv",
+    "Random Forest": "pseudo_labeled_random_forest.csv",
+    "Decision Tree": "pseudo_labeled_decision_tree.csv",
+    "Bagging": "pseudo_labeled_bagging.csv",
+    "AdaBoost": "pseudo_labeled_adaboost.csv",
+    "Majority Voting": "pseudo_labeled_majority_voting.csv"
+}
+
+# Store results
+accuracy_results = {}
+
+# Iterate through each model’s pseudo-labeled dataset
+for model_name, file_name in pseudo_label_files.items():
+    # Load pseudo labels
+    pseudo_labeled_df = pd.read_csv(file_name)
+
+    # Ensure the number of rows match
+    if len(true_labels) != len(pseudo_labeled_df):
+        print(f"Warning: Mismatch in row counts for {model_name}. Skipping accuracy calculation.")
+        continue
+
+    # Add the true labels to the pseudo-labeled dataset
+    comparison_df = pseudo_labeled_df.copy()
+    comparison_df["true_label"] = true_labels  # Add original ground truth labels
+
+    # Calculate accuracy
+    accuracy = accuracy_score(comparison_df["true_label"], comparison_df["pseudo_label"])
+    accuracy_results[model_name] = accuracy
+    print(f"{model_name} Pseudo Label Accuracy: {accuracy:.4f}")

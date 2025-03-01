@@ -1,8 +1,8 @@
 # Main Class
 
-from data_handler import DataHandler
-from teacher_model import TeacherModel
-from student_model import StudentModel
+# from data_handler import DataHandler
+# from teacher_model import TeacherModel
+# from student_model import StudentModel
 import pandas as pd
 
 # Step 1: Initialize DataHandler
@@ -33,13 +33,12 @@ for teacher_model_name in teacher.trained_models.keys():
 
     # Initialize and Train Student Models
     student_model = StudentModel(
-        data_handler.unlabeled_train_df,  # Original features for training
-        pseudo_labels_series              # Pseudo labels as target values
+        data_handler.unlabeled_train_df,  # Features
+        pseudo_labels_series              # Pseudo Labels
     )
 
     # Train and evaluate the student models
-    student_model.train_and_evaluate(data_handler.unlabeled_test_df, test_labels)
+    student_model.train_and_evaluate(data_handler.unlabeled_test_df, test_labels, teacher_model_name)
 
-    # Print results for each teacher-student model pair
-    student_model.print_results(teacher_model_name)
+    student_model.save_results(teacher_model_name)
 

@@ -79,14 +79,69 @@ class StudentModel:
 
         print(f"Training complete for Teacher Model: {teacher_model_name}")
 
-    def save_results(self, teacher_model_name):
+    def train_and_evaluate_semi_supervised(self, X_test, y_test):
+      """Train student models using autoencoder-generated pseudo labels (semi-supervised learning)."""
+
+      # Ensure input sizes match before training
+      assert len(self.X_train) == len(self.y_train), f"Mismatch: X_train size {len(self.X_train)} != y_train size {len(self.y_train)}"
+      assert len(X_test) == len(y_test), f"Mismatch: X_test size {len(X_test)} != y_test size {len(y_test)}"
+
+      for name, model in self.models.items():
+          # 10-Fold Cross-Validation on pseudo-labeled data (from autoencoder)
+          cv_scores = cross_val_score(model, self.X_train, self.y_train, cv=10, scoring='accuracy')
+          avg_cv_score = cv_scores.mean()
+
+          # Train model
+          model.fit(self.X_train, self.y_train)
+          self.trained_models[name] = model
+
+          # Predictions on test data
+          y_pred = model.predict(X_test)
+
+          # Calculate Evaluation Metrics
+          acc = accuracy_score(y_test, y_pred)
+          precision = precision_score(y_test, y_pred, average='weighted', zero_division=0)
+          recall = recall_score(y_test, y_pred, average='weighted', zero_division=0)
+          f1 = f1_score(y_test, y_pred, average='weighted', zero_division=0)
+
+          # Store results
+          self.results.append({
+              "Teacher Model": "AutoEncoder",
+              "Student Model": name,
+              "Cross-Validation Accuracy": avg_cv_score,
+              "Test Accuracy": acc,
+              "Precision": precision,
+              "Recall": recall,
+              "F1-Score": f1
+          })
+
+          # Save the best model based on accuracy
+          if acc > self.best_score:
+              self.best_score = acc
+              self.best_model = model
+              self.best_model_name = name
+
+          # Generate and plot confusion matrix
+          cm = confusion_matrix(y_test, y_pred)
+          plt.figure(figsize=(6, 5))
+          sns.heatmap(cm, annot=True, fmt='d', cmap='Blues', xticklabels=['Normal', 'Attack'], yticklabels=['Normal', 'Attack'])
+          plt.xlabel("Predicted Labels")
+          plt.ylabel("True Labels")
+          plt.title(f"Confusion Matrix (AutoEncoder → {name})")
+          plt.show()
+
+      print("Training complete for Semi-Supervised Learning (AutoEncoder).")
+
+
+    def save_results(self, teacher_model_name, semi_supervised=False):
+        """Save results separately for supervised and semi-supervised learning."""
         results_df = pd.DataFrame(self.results)
 
         # Ensure the results directory exists
         os.makedirs("results", exist_ok=True)
 
         # Define the file path
-        file_path = "student_model_results.csv"
+        file_path = "semi_supervised_student_results.csv" if semi_supervised else "student_model_results.csv"
 
         # If the file already exists, append new results without overwriting
         if os.path.exists(file_path):

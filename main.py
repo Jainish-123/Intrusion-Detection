@@ -1,91 +1,65 @@
 # Main Class
 
+import pandas as pd
+import os
 # from data_handler import DataHandler
 # from teacher_model import TeacherModel
 # from student_model import StudentModel
-import pandas as pd
 
-# Step 1: Initialize DataHandler
-data_handler = DataHandler("train_test_networkP.csv")
+def train_supervised(dataset_path):
+    """ Supervised Learning Pipeline """
+    print(f"\n========== Supervised Learning: {dataset_path} ==========")
 
-# Step 2: Load and split dataset
-data_handler.load_dataset()
-data_handler.split_labeled_unlabeled()
-unlabeled_train, unlabeled_test, train_labels, test_labels = data_handler.split_unlabeled_train_test()
+    data_handler = DataHandler(dataset_path)
+    data_handler.load_dataset()
+    data_handler.split_labeled_unlabeled()
+    data_handler.split_unlabeled_train_test()
+    data_handler.save_datasets()
 
-# Step 3: Save datasets automatically
-data_handler.save_datasets()
+    X_train, X_val, y_train, y_val = data_handler.prepare_labeled_data_for_training()
 
-# Step 4: Prepare labeled data for training (Train/Validation Split)
-X_train, X_val, y_train, y_val = data_handler.prepare_labeled_data_for_training()
+    teacher = TeacherModel(X_train, y_train)
+    teacher.train_with_cross_validation()
 
-# Step 5: Train Teacher Models with 10-Fold Cross-Validation
-teacher = TeacherModel(X_train, y_train)
-teacher_scores = teacher.train_with_cross_validation()
+    for teacher_model_name in teacher.trained_models.keys():
+        pseudo_labels = teacher.generate_pseudo_labels(data_handler.unlabeled_train_df, teacher_model_name)
+        pseudo_labels_series = pd.Series(pseudo_labels, name='pseudo_label')
 
-# Step 6: Train Student Models with pseudo-labels from each teacher model
-for teacher_model_name in teacher.trained_models.keys():
-    # Generate pseudo labels
-    pseudo_labels = teacher.generate_pseudo_labels(data_handler.unlabeled_train_df, teacher_model_name)
+        student_model = StudentModel(data_handler.unlabeled_train_df, pseudo_labels_series)
+        student_model.train_and_evaluate(data_handler.unlabeled_test_df, data_handler.test_labels, teacher_model_name)
+        student_model.save_results()
 
-    # Convert pseudo labels to Series (1D data for training)
-    pseudo_labels_series = pd.Series(pseudo_labels, name='pseudo_label')
+def train_semi_supervised(dataset_path):
+    """ Semi-Supervised Learning Pipeline """
+    print(f"\n========== Semi-Supervised Learning: {dataset_path} ==========")
 
-    # Initialize and Train Student Models
-    student_model = StudentModel(
-        data_handler.unlabeled_train_df,  # Features
-        pseudo_labels_series              # Pseudo Labels
-    )
+    data_handler = DataHandler(dataset_path)
+    data_handler.load_dataset()
+    data_handler.split_normal_attack_data()
+    data_handler.split_autoencoder_train_data()
+    data_handler.prepare_semi_supervised_data()
+    data_handler.save_datasets_semi_supervised()
 
-    # Train and evaluate the student models
-    student_model.train_and_evaluate(data_handler.unlabeled_test_df, test_labels, teacher_model_name)
+    teacher = TeacherModel()
+    teacher.train_autoencoder(data_handler.normal_train_df)
 
-    student_model.save_results(teacher_model_name)
+    pseudo_labels = teacher.generate_pseudo_labels_semi_supervised(data_handler.semi_supervised_train_df)
+    pseudo_labels_df = pd.DataFrame(pseudo_labels, columns=["pseudo_label"])
+    pseudo_labels_file = "pseudo_labeled_autoencoder.csv"
+    pseudo_labels_df.to_csv(pseudo_labels_file, index=False)
 
+    print("Pseudo-labels generated and saved for AutoEncoder.")
 
+    if os.path.exists(pseudo_labels_file):
+        student_model = StudentModel(data_handler.semi_supervised_train_df, data_handler.semi_supervised_train_labels)
+        student_model.train_and_evaluate(data_handler.semi_supervised_test_df, data_handler.semi_supervised_test_labels, "AutoEncoder", mode="semi-supervised")
+        student_model.save_results(semi_supervised=True)
 
-semi_supervised_data_handler = DataHandler("train_test_networkP.csv")
+if __name__ == "__main__":
+    # Run Supervised Learning on multiple datasets
+    supervised_datasets = ["train_test_networkP.csv", "Train_Test_IoT_WeatherNormalAttackP.csv"]
+    for dataset in supervised_datasets:
+        train_supervised(dataset)
 
-semi_supervised_data_handler.load_dataset()
-semi_supervised_data_handler.split_normal_attack_data()
-semi_supervised_data_handler.split_autoencoder_train_data()
-semi_supervised_data_handler.prepare_semi_supervised_data()
-semi_supervised_data_handler.save_datasets_semi_supervised()
-
-# Train AutoEncoder on Normal Data
-print("\n========== Training AutoEncoder Teacher Model (Semi-Supervised) ==========")
-semi_supervised_teacher = TeacherModel()
-semi_supervised_teacher.train_autoencoder(semi_supervised_data_handler.normal_train_df)
-
-print("Autoencoder Training Shape:", semi_supervised_data_handler.normal_train_df.shape)
-print("Pseudo Label Dataset Shape (Before Fix):", semi_supervised_data_handler.semi_supervised_train_df.shape)
-
-
-# Generate Pseudo Labels (Normal + Attack) using AutoEncoder
-semi_supervised_pseudo_labels = teacher.generate_pseudo_labels_semi_supervised(
-    semi_supervised_data_handler.semi_supervised_train_df
-)
-
-# Save Pseudo Labels for Semi-Supervised Learning
-semi_supervised_file = "pseudo_labeled_autoencoder.csv"
-pd.DataFrame(semi_supervised_pseudo_labels, columns=["pseudo_label"]).to_csv(semi_supervised_file, index=False)
-print("Pseudo-labels generated and saved for AutoEncoder.")
-
-# Train and Evaluate Student Models (Semi-Supervised)
-print("\n========== Training Student Models (Semi-Supervised) ==========")
-
-if os.path.exists(semi_supervised_file):
-    pseudo_labels_df = pd.read_csv(semi_supervised_file)
-
-    semi_supervised_student_model = StudentModel(
-        semi_supervised_data_handler.semi_supervised_train_df,  # Features for training
-        semi_supervised_data_handler.semi_supervised_train_labels 
-    )
-
-    semi_supervised_student_model.train_and_evaluate_semi_supervised(
-        semi_supervised_data_handler.semi_supervised_test_df,  # Features for testing
-        semi_supervised_data_handler.semi_supervised_test_labels  # Correct testing labels
-    )
-
-
-    semi_supervised_student_model.save_results("AutoEncoder", semi_supervised=True)
+    # Run Semi-Supervised Learning
+    train_semi_supervised("train_test_networkP.csv")

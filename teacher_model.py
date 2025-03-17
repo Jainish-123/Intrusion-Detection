@@ -1,7 +1,8 @@
-# TeacherModel Class (Supports Supervised & Semi-Supervised Learning)
-
 import numpy as np
 import tensorflow as tf
+import pandas as pd
+import seaborn as sns
+import matplotlib.pyplot as plt
 from tensorflow.keras.models import Model
 from tensorflow.keras.layers import Input, Dense
 from tensorflow.keras.callbacks import EarlyStopping
@@ -9,6 +10,8 @@ from sklearn.model_selection import cross_val_score
 from sklearn.ensemble import RandomForestClassifier, BaggingClassifier, AdaBoostClassifier
 from sklearn.tree import DecisionTreeClassifier
 from xgboost import XGBClassifier
+from sklearn.metrics import accuracy_score, f1_score, confusion_matrix
+import os
 
 class TeacherModel:
     def __init__(self, X_train=None, y_train=None, verbose=True):
@@ -18,6 +21,8 @@ class TeacherModel:
         self.verbose = verbose
         self.trained_models = {}
         self.autoencoder = None
+        self.results_dir = "results"  # Directory to save results
+        os.makedirs(self.results_dir, exist_ok=True)  # Create directory if it doesn't exist
 
     def _log(self, message):
         """ Print messages only if verbose mode is enabled. """
@@ -35,24 +40,32 @@ class TeacherModel:
         }
 
     def train_with_cross_validation(self, folds=10):
-        """ Train supervised models with cross-validation. """
+        """ Train supervised models with cross-validation and save results. """
         if self.X_train is None or self.y_train is None:
             raise ValueError("Training data is missing! Provide X_train and y_train.")
 
         self.models = self._initialize_models()
-        best_scores = {}
+        results = []
 
         for name, model in self.models.items():
             scores = cross_val_score(model, self.X_train, self.y_train, cv=folds, scoring='accuracy')
             avg_score = scores.mean()
-            best_scores[name] = avg_score
-            self._log(f"{name} - Avg Accuracy ({folds}-fold CV): {avg_score:.4f}")
+            results.append([name, avg_score])
+            # self._log(f"{name} - Avg Accuracy ({folds}-fold CV): {avg_score:.4f}")
 
             # Train the model on full dataset
             model.fit(self.X_train, self.y_train)
             self.trained_models[name] = model
 
-        return best_scores
+        # Save results to CSV
+        df_results = pd.DataFrame(results, columns=['Model', 'Cross-Validation Accuracy'])
+        df_results.to_csv(os.path.join(self.results_dir, "cross_validation_results.csv"), index=False)
+
+        print("\n Cross validation results in teacher model training")
+        print(df_results)
+        print()
+
+        return df_results
 
     def train_autoencoder(self, normal_train_df, encoding_dim=16, epochs=50, batch_size=32):
         """ Train an autoencoder for anomaly detection. """
@@ -67,7 +80,6 @@ class TeacherModel:
         self.autoencoder = Model(inputs=input_layer, outputs=decoded)
         self.autoencoder.compile(optimizer="adam", loss="mse")
 
-        # Early stopping to prevent overfitting
         early_stopping = EarlyStopping(monitor='loss', patience=5, restore_best_weights=True)
 
         self._log("Training Autoencoder on Normal Data...")
@@ -78,8 +90,58 @@ class TeacherModel:
             shuffle=True,
             callbacks=[early_stopping]
         )
-
         self._log("Autoencoder training completed!")
+
+    def evaluate_models(self, X_test, y_test):
+        """ Evaluate trained models on test dataset and save results """
+        results = []
+        for name, model in self.trained_models.items():
+            y_pred = model.predict(X_test)
+            acc = accuracy_score(y_test, y_pred)
+            f1 = f1_score(y_test, y_pred, average='weighted')
+            results.append([name, acc, f1])
+            self._log(f"{name} - Accuracy: {acc:.4f}, F1-Score: {f1:.4f}")
+
+            # Save Confusion Matrix
+            cm = confusion_matrix(y_test, y_pred)
+            plt.figure(figsize=(6, 4))
+            sns.heatmap(cm, annot=True, fmt='d', cmap='Blues')
+            plt.xlabel('Predicted')
+            plt.ylabel('Actual')
+            plt.title(f'Confusion Matrix - {name}')
+            plt.savefig(os.path.join(self.results_dir, f"confusion_matrix_{name}.png"))
+            plt.show()
+
+        # Evaluate Autoencoder
+        if self.autoencoder is not None:
+            self._log("Evaluating Autoencoder on test data...")
+            reconstructed = self.autoencoder.predict(X_test)
+            reconstruction_error = np.mean(np.abs(reconstructed - X_test), axis=1)
+            threshold = reconstruction_error.mean() + reconstruction_error.std()
+            y_pred_autoencoder = (reconstruction_error > threshold).astype(int)
+            acc_auto = accuracy_score(y_test, y_pred_autoencoder)
+            f1_auto = f1_score(y_test, y_pred_autoencoder, average='weighted')
+            results.append(["Autoencoder", acc_auto, f1_auto])
+            self._log(f"Autoencoder - Accuracy: {acc_auto:.4f}, F1-Score: {f1_auto:.4f}")
+
+            # Save Confusion Matrix for Autoencoder
+            cm_auto = confusion_matrix(y_test, y_pred_autoencoder)
+            plt.figure(figsize=(6, 4))
+            sns.heatmap(cm_auto, annot=True, fmt='d', cmap='Blues')
+            plt.xlabel('Predicted')
+            plt.ylabel('Actual')
+            plt.title('Confusion Matrix - Autoencoder')
+            plt.savefig(os.path.join(self.results_dir, "confusion_matrix_autoencoder.png"))
+            plt.show()
+
+        df_results = pd.DataFrame(results, columns=['Model', 'Accuracy', 'F1-Score'])
+        df_results.to_csv(os.path.join(self.results_dir, "test_results.csv"), index=False)
+
+        print("\nTeacher model evaluation on Unseen test data")
+        print(df_results)
+        print()
+
+        return df_results
 
     def _get_trained_model(self, model_name):
         """ Retrieve a trained model by name. """
@@ -104,4 +166,3 @@ class TeacherModel:
         threshold = reconstruction_error.mean() + reconstruction_error.std()
 
         return (reconstruction_error > threshold).astype(int)
-

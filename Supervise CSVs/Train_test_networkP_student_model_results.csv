@@ -1,0 +1,30 @@
+Teacher Model,Student Model,Test Accuracy,F1-Score
+XGBoost,XGBoost,0.996209476,0.996205334
+XGBoost,Random Forest,0.996259352,0.996255127
+XGBoost,Decision Tree,0.996009975,0.996006199
+XGBoost,Bagging,0.996209476,0.996205889
+XGBoost,AdaBoost,0.987581047,0.98754594
+,,,
+Random Forest,XGBoost,0.99755611,0.99755335
+Random Forest,Random Forest,0.997456359,0.997453673
+Random Forest,Decision Tree,0.997506234,0.997503874
+Random Forest,Bagging,0.99755611,0.997553707
+Random Forest,AdaBoost,0.9840399,0.984031783
+,,,
+Decision Tree,XGBoost,0.995610973,0.99560906
+Decision Tree,Random Forest,0.995561097,0.995558678
+Decision Tree,Decision Tree,0.995561097,0.995559647
+Decision Tree,Bagging,0.995511222,0.995509919
+Decision Tree,AdaBoost,0.984638404,0.984641741
+,,,
+Bagging,XGBoost,0.996309227,0.996305734
+Bagging,Random Forest,0.996159601,0.996155264
+Bagging,Decision Tree,0.99605985,0.996055977
+Bagging,Bagging,0.996159601,0.996156107
+Bagging,AdaBoost,0.983790524,0.983780508
+,,,
+AdaBoost,XGBoost,0.983790524,0.983773404
+AdaBoost,Random Forest,0.983690773,0.983672354
+AdaBoost,Decision Tree,0.983690773,0.983672354
+AdaBoost,Bagging,0.983690773,0.983672354
+AdaBoost,AdaBoost,0.983890274,0.983874438
